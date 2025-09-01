@@ -2,10 +2,12 @@
 """
 بوت نسخ التداول - معاوية
 هذا الكود ينسخ كل العمليات من الحساب الرئيسي إلى الحسابات الفرعية (حتى 15 حساب).
+جميع المفاتيح والبيانات تُقرأ من ملف secrets.json
 """
 
 import os
 import sys
+import json
 import subprocess
 
 # -------------------------------
@@ -22,44 +24,26 @@ except ImportError:
     from binance.client import Client
     from binance.enums import *
 
-try:
-    import pandas as pd
-except ImportError:
-    install("pandas")
-    import pandas as pd
+# --------------------------------
+# تحميل بيانات API من ملف secrets.json
+# --------------------------------
+SECRETS_FILE = "secrets.json"
 
-# --------------------------------
-# 🔑 ضع هنا بيانات الحساب الرئيسي
-# --------------------------------
-MAIN_API_KEY    = "💚_ضع_مفتاح_API_الحساب_الرئيسي_هنا"
-MAIN_API_SECRET = "💚_ضع_الرقم_السري_للحساب_الرئيسي_هنا"
+if not os.path.exists(SECRETS_FILE):
+    raise FileNotFoundError("⚠️ ملف secrets.json غير موجود. أنشئه وضع فيه المفاتيح.")
 
-# --------------------------------
-# 🔑 ضع هنا بيانات الحسابات الفرعية
-# --------------------------------
-SUB_ACCOUNTS = [
-    {"api_key": "💚_ضع_API_الفرعي1", "api_secret": "💚_ضع_SECRET_الفرعي1"},
-    {"api_key": "💚_ضع_API_الفرعي2", "api_secret": "💚_ضع_SECRET_الفرعي2"},
-    {"api_key": "💚_ضع_API_الفرعي3", "api_secret": "💚_ضع_SECRET_الفرعي3"},
-    {"api_key": "💚_ضع_API_الفرعي4", "api_secret": "💚_ضع_SECRET_الفرعي4"},
-    {"api_key": "💚_ضع_API_الفرعي5", "api_secret": "💚_ضع_SECRET_الفرعي5"},
-    {"api_key": "💚_ضع_API_الفرعي6", "api_secret": "💚_ضع_SECRET_الفرعي6"},
-    {"api_key": "💚_ضع_API_الفرعي7", "api_secret": "💚_ضع_SECRET_الفرعي7"},
-    {"api_key": "💚_ضع_API_الفرعي8", "api_secret": "💚_ضع_SECRET_الفرعي8"},
-    {"api_key": "💚_ضع_API_الفرعي9", "api_secret": "💚_ضع_SECRET_الفرعي9"},
-    {"api_key": "💚_ضع_API_الفرعي10", "api_secret": "💚_ضع_SECRET_الفرعي10"},
-    {"api_key": "💚_ضع_API_الفرعي11", "api_secret": "💚_ضع_SECRET_الفرعي11"},
-    {"api_key": "💚_ضع_API_الفرعي12", "api_secret": "💚_ضع_SECRET_الفرعي12"},
-    {"api_key": "💚_ضع_API_الفرعي13", "api_secret": "💚_ضع_SECRET_الفرعي13"},
-    {"api_key": "💚_ضع_API_الفرعي14", "api_secret": "💚_ضع_SECRET_الفرعي14"},
-    {"api_key": "💚_ضع_API_الفرعي15", "api_secret": "💚_ضع_SECRET_الفرعي15"},
-]
+with open(SECRETS_FILE, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+MAIN_API_KEY    = data.get("main", {}).get("api_key", "")
+MAIN_API_SECRET = data.get("main", {}).get("api_secret", "")
+SUB_ACCOUNTS    = data.get("subs", [])
 
 # --------------------------------
 # إنشاء العملاء (Clients)
 # --------------------------------
 main_client = Client(MAIN_API_KEY, MAIN_API_SECRET)
-sub_clients = [Client(acc["api_key"], acc["api_secret"]) for acc in SUB_ACCOUNTS if acc["api_key"] != ""]
+sub_clients = [Client(acc["api_key"], acc["api_secret"]) for acc in SUB_ACCOUNTS if acc["api_key"]]
 
 print("✅ تم الاتصال بالحساب الرئيسي والفرعي بنجاح.")
 
