@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 بوت نسخ التداول - معاوية
-هذا الكود ينسخ كل العمليات من الحساب الرئيسي إلى الحسابات الفرعية (حتى 15 حساب).
-جميع المفاتيح والبيانات تُقرأ من ملف secrets.json
+يقوم بنسخ كل الأوامر من الحساب الرئيسي إلى الحسابات الفرعية (حتى 15 حساب).
+النسخ فوري باستخدام WebSocket stream من Binance.
 """
 
 import os
 import sys
-import json
 import subprocess
 
 # -------------------------------
@@ -19,31 +18,35 @@ def install(package):
 try:
     from binance.client import Client
     from binance.enums import *
+    from binance.streams import ThreadedWebsocketManager
 except ImportError:
     install("python-binance")
     from binance.client import Client
     from binance.enums import *
+    from binance.streams import ThreadedWebsocketManager
 
 # --------------------------------
-# تحميل بيانات API من ملف secrets.json
+# تحميل بيانات API من أداة Secrets
 # --------------------------------
-SECRETS_FILE = "secrets.json"
+MAIN_API_KEY    = os.getenv("MAIN_API_KEY")
+MAIN_API_SECRET = os.getenv("MAIN_API_SECRET")
 
-if not os.path.exists(SECRETS_FILE):
-    raise FileNotFoundError("⚠️ ملف secrets.json غير موجود. أنشئه وضع فيه المفاتيح.")
+if not MAIN_API_KEY or not MAIN_API_SECRET:
+    raise ValueError("⚠️ تأكد من إضافة MAIN_API_KEY و MAIN_API_SECRET في أداة Secrets.")
 
-with open(SECRETS_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-MAIN_API_KEY    = data.get("main", {}).get("api_key", "")
-MAIN_API_SECRET = data.get("main", {}).get("api_secret", "")
-SUB_ACCOUNTS    = data.get("subs", [])
+# الحسابات الفرعية (حتى 15 حساب)
+SUB_ACCOUNTS = []
+for i in range(1, 16):
+    key = os.getenv(f"SUB{i}_API_KEY")
+    secret = os.getenv(f"SUB{i}_API_SECRET")
+    if key and secret:
+        SUB_ACCOUNTS.append({"api_key": key, "api_secret": secret})
 
 # --------------------------------
 # إنشاء العملاء (Clients)
 # --------------------------------
 main_client = Client(MAIN_API_KEY, MAIN_API_SECRET)
-sub_clients = [Client(acc["api_key"], acc["api_secret"]) for acc in SUB_ACCOUNTS if acc["api_key"]]
+sub_clients = [Client(acc["api_key"], acc["api_secret"]) for acc in SUB_ACCOUNTS]
 
 print("✅ تم الاتصال بالحساب الرئيسي والفرعي بنجاح.")
 
@@ -51,12 +54,12 @@ print("✅ تم الاتصال بالحساب الرئيسي والفرعي بن
 # دالة نسخ الأوامر
 # --------------------------------
 def copy_order(order):
-    symbol   = order["symbol"]
-    side     = order["side"]
-    o_type   = order["type"]
-    quantity = order["origQty"]
+    symbol   = order["s"]     # رمز العملة
+    side     = order["S"]     # BUY أو SELL
+    o_type   = order["o"]     # نوع الأمر (LIMIT, MARKET...)
+    quantity = order["q"]     # الكمية
 
-    print(f"📌 نسخ أمر: {side} {quantity} {symbol}")
+    print(f"📌 نسخ أمر: {side} {quantity} {symbol} ({o_type})")
 
     for i, client in enumerate(sub_clients, start=1):
         try:
@@ -71,21 +74,21 @@ def copy_order(order):
             print(f"   ❌ خطأ في الحساب الفرعي {i}: {e}")
 
 # --------------------------------
-# متابعة أوامر الحساب الرئيسي
+# WebSocket لمتابعة أوامر الحساب الرئيسي
 # --------------------------------
 def main_loop():
-    print("🚀 بدأ البوت متابعة أوامر الحساب الرئيسي...")
-    from time import sleep
+    print("🚀 بدأ البوت متابعة أوامر الحساب الرئيسي بشكل فوري...")
 
-    while True:
-        try:
-            orders = main_client.get_all_orders(symbol="BTCUSDT", limit=1)
-            if orders:
-                last_order = orders[-1]
-                copy_order(last_order)
-        except Exception as e:
-            print(f"⚠️ خطأ: {e}")
-        sleep(10)  # فحص كل 10 ثواني
+    twm = ThreadedWebsocketManager(api_key=MAIN_API_KEY, api_secret=MAIN_API_SECRET)
+    twm.start()
+
+    def handle_order(msg):
+        if msg["e"] == "executionReport":  # رسالة تنفيذ أمر
+            if msg["X"] == "NEW":  # أمر جديد
+                copy_order(msg)
+
+    twm.start_user_socket(callback=handle_order)
+    twm.join()
 
 if __name__ == "__main__":
     main_loop()
