@@ -10,12 +10,12 @@ def install(package):
 try:
     from binance.client import Client
     from binance.enums import *
-    from binance.streams import ThreadedWebsocketManager
+    from binance import ThreadedWebsocketManager
 except ImportError:
     install("python-binance")
     from binance.client import Client
     from binance.enums import *
-    from binance.streams import ThreadedWebsocketManager
+    from binance import ThreadedWebsocketManager
 
 # قراءة المفاتيح من Secrets
 MAIN_API_KEY    = os.getenv("MAIN_API_KEY")
@@ -49,24 +49,36 @@ def copy_order(order):
     for i, client in enumerate(sub_clients, start=1):
         try:
             if o_type == "MARKET":
-                client.create_order(symbol=symbol, side=side, type=o_type, quantity=quantity)
+                client.create_order(
+                    symbol=symbol,
+                    side=side,
+                    type=o_type,
+                    quantity=quantity
+                )
             elif o_type == "LIMIT":
-                client.create_order(symbol=symbol, side=side, type=o_type, quantity=quantity, price=price)
+                client.create_order(
+                    symbol=symbol,
+                    side=side,
+                    type=o_type,
+                    quantity=quantity,
+                    price=price,
+                    timeInForce="GTC"
+                )
             print(f"   ✅ نُفِّذ في الحساب الفرعي {i}")
         except Exception as e:
             print(f"   ❌ خطأ في الحساب الفرعي {i}: {e}")
 
 def main_loop():
     print("🚀 بدأ البوت متابعة أوامر الحساب الرئيسي بشكل فوري...")
-    listen_key = main_client.stream_get_listen_key()
-    twm = ThreadedWebsocketManager()
+
+    twm = ThreadedWebsocketManager(api_key=MAIN_API_KEY, api_secret=MAIN_API_SECRET)
     twm.start()
 
     def handle_order(msg):
         if msg["e"] == "executionReport" and msg["X"] == "NEW":
             copy_order(msg)
 
-    twm.start_user_socket(listen_key=listen_key, callback=handle_order)
+    twm.start_user_socket(callback=handle_order)
 
     try:
         while True:
